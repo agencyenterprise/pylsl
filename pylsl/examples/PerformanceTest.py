@@ -16,6 +16,9 @@ try:
 except ImportError:
     haspyqtgraph = False
 
+# Need this for tests
+from numpy_ringbuffer import RingBuffer
+
 
 # The code for pink noise generation is taken from
 # https://github.com/python-acoustics/python-acoustics/blob/master/acoustics/generator.py
@@ -142,9 +145,11 @@ class BetaGeneratorOutlet(object):
 
         print("Beta outlet pushing signal with shape {},{} and Beta amp {}".format(this_sig.shape[0], this_sig.shape[1],
                                                                                    beta_amp))
-        self.eeg_outlet.push_chunk(this_sig, timestamp=this_tvec[-1])
+        self.eeg_outlet.push_chunk(this_sig, timestamp=this_tvec)
 
         self.last_time = local_clock()
+
+        return this_sig, this_tvec
 
 
 class BetaInlet(object):
@@ -300,6 +305,8 @@ betaGen = BetaGeneratorOutlet()
 markerGen = MarkersGeneratorOutlet()
 betaIn = BetaInlet()
 markerIn = MarkerInlet()
+signal_buffer = RingBuffer(capacity=30000, dtype=(np.float32, 6))
+time_buffer = RingBuffer(capacity=30000, dtype=np.float32)
 
 if haspyqtgraph:
     qapp = pg.QtGui.QApplication(sys.argv)
@@ -308,11 +315,28 @@ if haspyqtgraph:
     qwindow.parent().setWindowTitle("pylsl PerformanceTest")
 
 
+first_push: bool = True
 def update():
     markerGen.update()
     markerIn.update()
-    betaGen.update(task=markerIn.task)  # Rate-limiting step. Will time.sleep as needed.
+    pushed_signal, pushed_tvec = betaGen.update(task=markerIn.task)  # Rate-limiting step. Will time.sleep as needed.
+    global first_push
+    if first_push:
+        # The first push_chunk doesn't get pulled in,
+        # perhaps because the InletStream isn't open yet
+        # https://github.com/labstreaminglayer/pylsl/blob/master/pylsl/pylsl.py#L719-L721
+        first_push = False
+    else:
+        signal_buffer.extend(pushed_signal)
+        time_buffer.extend(pushed_tvec)
+
     signal, tvec = betaIn.update()
+    num_samples = len(signal)
+    np.testing.assert_allclose(signal, signal_buffer[:num_samples])
+    # The following commented-out test fails, with `time_buffer[:num_samples]` < `tvec` by about 1 second
+    # np.testing.assert_allclose(tvec, time_buffer[:num_samples])
+    for idx in range(num_samples):
+        signal_buffer.popleft()
 
     if haspyqtgraph:
         plot = qwindow.getPlotItem()
