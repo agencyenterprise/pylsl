@@ -337,6 +337,7 @@ def update():
     # np.testing.assert_allclose(tvec, time_buffer[:num_samples])
     for idx in range(num_samples):
         signal_buffer.popleft()
+        time_buffer.popleft()
 
     if haspyqtgraph:
         plot = qwindow.getPlotItem()
