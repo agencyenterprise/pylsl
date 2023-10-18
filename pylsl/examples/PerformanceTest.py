@@ -306,7 +306,7 @@ markerGen = MarkersGeneratorOutlet()
 betaIn = BetaInlet()
 markerIn = MarkerInlet()
 signal_buffer = RingBuffer(capacity=30000, dtype=(np.float32, 6))
-time_buffer = RingBuffer(capacity=30000, dtype=np.float32)
+time_buffer = RingBuffer(capacity=30000, dtype=np.float64)
 
 if haspyqtgraph:
     qapp = pg.QtGui.QApplication(sys.argv)
@@ -333,8 +333,9 @@ def update():
     signal, tvec = betaIn.update()
     num_samples = len(signal)
     np.testing.assert_allclose(signal, signal_buffer[:num_samples])
-    # The following commented-out test fails, with `time_buffer[:num_samples]` < `tvec` by about 1 second
-    # np.testing.assert_allclose(tvec, time_buffer[:num_samples])
+    # The following commented-out test fails for small rtol, with `time_buffer[:num_samples]` < `tvec` by about 0.01 seconds
+    # Why?
+    # np.testing.assert_allclose(tvec, time_buffer[:num_samples], rtol=1e-5)
     for idx in range(num_samples):
         signal_buffer.popleft()
         time_buffer.popleft()
